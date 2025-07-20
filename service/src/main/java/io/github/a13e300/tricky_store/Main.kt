@@ -53,7 +53,7 @@ fun verifySelf() {
             prop.writeText(kv.entries.joinToString("\n") { (k, v) ->
                 when (k) {
                     "description" -> "description=×Module files corrupted, please re-download it from github.com/qwq233/TrickyStore"
-                    "author" -> "author=5ec1cff, James Clef"
+                    "author" -> "author=5ec1cff, James Clef, beakthoven"
                     else -> "$k=$v"
                 }
             })

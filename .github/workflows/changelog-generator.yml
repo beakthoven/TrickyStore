@@ -61,7 +61,7 @@ jobs:
             "version": "${{ steps.release_info.outputs.tag_name }}",
             "versionCode": ${{ steps.commit_count.outputs.versionCode }},
             "zipUrl": "${{ steps.release_info.outputs.asset_url }}",
-            "changelog": "https://raw.githubusercontent.com/qwq233/TrickyStore/changelog/changelog.md"
+            "changelog": "https://raw.githubusercontent.com/beakthoven/TrickyStore/changelog/changelog.md"
           }
           EOF
 

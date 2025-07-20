@@ -60,10 +60,10 @@ jobs:
         if: success()
         id: prepareArtifact
         run: |
-          releaseName=`ls module/release/Tricky-Store-v*-release.zip | awk -F '(/|.zip)' '{print $3}'` && echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
-          debugName=`ls module/release/Tricky-Store-v*-debug.zip | awk -F '(/|.zip)' '{print $3}'` && echo "debugName=$debugName" >> $GITHUB_OUTPUT
-          unzip module/release/Tricky-Store-v*-release.zip -d module-release
-          unzip module/release/Tricky-Store-v*-debug.zip -d module-debug
+          releaseName=`ls module/release/Tricky-Store-OSS-v*-release.zip | awk -F '(/|.zip)' '{print $3}'` && echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
+          debugName=`ls module/release/Tricky-Store-OSS-v*-debug.zip | awk -F '(/|.zip)' '{print $3}'` && echo "debugName=$debugName" >> $GITHUB_OUTPUT
+          unzip module/release/Tricky-Store-OSS-v*-release.zip -d module-release
+          unzip module/release/Tricky-Store-OSS-v*-debug.zip -d module-debug
 
       - name: Upload release
         id: release
