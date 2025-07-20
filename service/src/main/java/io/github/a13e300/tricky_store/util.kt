@@ -39,41 +39,16 @@ fun getBootHashFromProp(): ByteArray? {
 fun randomBytes() = ByteArray(32).also { ThreadLocalRandom.current().nextBytes(it) }
 
 // Data class for security_patch.txt
-private data class CustomPatchLevel(
+data class CustomPatchLevel(
     val system: String? = null,
     val vendor: String? = null,
     val boot: String? = null,
     val all: String? = null
 )
 
-private val customPatchLevel: CustomPatchLevel? by lazy {
-    val file = File("/data/adb/tricky_store/security_patch.txt")
-    if (!file.exists()) return@lazy null
-    val lines = file.readLines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
-    if (lines.isEmpty()) return@lazy null
-    // Simple mode: first line is a patch level
-    if (lines.size == 1 && !lines[0].contains("=")) {
-        return@lazy CustomPatchLevel(all = lines[0])
-    }
-    // Advanced mode: parse key=value pairs
-    val map = mutableMapOf<String, String>()
-    for (line in lines) {
-        val idx = line.indexOf('=')
-        if (idx > 0) {
-            val key = line.substring(0, idx).trim().lowercase()
-            val value = line.substring(idx + 1).trim()
-            map[key] = value
-        }
-    }
-    // If all is set, use it as default for system, vendor, boot if not set
-    val all = map["all"]
-    CustomPatchLevel(
-        system = map["system"] ?: all,
-        vendor = map["vendor"] ?: all,
-        boot = map["boot"] ?: all,
-        all = all
-    )
-}
+// Use live-updating patch level from Config
+private val customPatchLevel: CustomPatchLevel?
+    get() = Config._customPatchLevel
 
 private fun getCustomPatchLevel(key: String, long: Boolean): Int? {
     val cpl = customPatchLevel ?: return null
@@ -98,40 +73,39 @@ private fun getCustomPatchLevel(key: String, long: Boolean): Int? {
             else null
         }
     } catch (_: Exception) {
-        null
+null
     }
 }
 
-// Fallback to devconfig.toml if security_patch.txt fails
-val patchLevel
-    get() = getCustomPatchLevel("system", false)
-        ?: runCatching { Config.devConfig.securityPatch.convertPatchLevel(false) }.getOrDefault(Build.VERSION.SECURITY_PATCH.convertPatchLevel(false))
+// Live patch level values, updated via FileObserver
+@Volatile private var _customPatchLevel: CustomPatchLevel? = null
 
-val patchLevelLong
+val patchLevel: Int
+    get() = getCustomPatchLevel("system", false)
+        ?: Build.VERSION.SECURITY_PATCH.convertPatchLevel(false)
+
+val patchLevelLong: Int
     get() = getCustomPatchLevel("system", true)
-        ?: runCatching { Config.devConfig.securityPatch.convertPatchLevel(true) }.getOrDefault(Build.VERSION.SECURITY_PATCH.convertPatchLevel(false))
+        ?: Build.VERSION.SECURITY_PATCH.convertPatchLevel(false)
 
 val vendorPatchLevel: Int
     get() = getCustomPatchLevel("vendor", false)
-        ?: runCatching { Config.devConfig.securityPatch.convertPatchLevel(false) }.getOrDefault(Build.VERSION.SECURITY_PATCH.convertPatchLevel(false))
+        ?: Build.VERSION.SECURITY_PATCH.convertPatchLevel(false)
 
 val vendorPatchLevelLong: Int
     get() = getCustomPatchLevel("vendor", true)
-        ?: runCatching { Config.devConfig.securityPatch.convertPatchLevel(true) }.getOrDefault(Build.VERSION.SECURITY_PATCH.convertPatchLevel(true))
+        ?: Build.VERSION.SECURITY_PATCH.convertPatchLevel(true)
 
 val bootPatchLevel: Int
     get() = getCustomPatchLevel("boot", false)
-        ?: runCatching { Config.devConfig.securityPatch.convertPatchLevel(false) }.getOrDefault(Build.VERSION.SECURITY_PATCH.convertPatchLevel(false))
+        ?: Build.VERSION.SECURITY_PATCH.convertPatchLevel(false)
 
 val bootPatchLevelLong: Int
     get() = getCustomPatchLevel("boot", true)
-        ?: runCatching { Config.devConfig.securityPatch.convertPatchLevel(true) }.getOrDefault(Build.VERSION.SECURITY_PATCH.convertPatchLevel(true))
+        ?: Build.VERSION.SECURITY_PATCH.convertPatchLevel(true)
 
-val osVersion
-    get() = Config.devConfig.osVersion.run {
-        if (this > 0) return@run getOsVersion(this)
-        else return@run getOsVersion(Build.VERSION.SDK_INT)
-    }
+val osVersion: Int
+    get() = getOsVersion(Build.VERSION.SDK_INT)
 
 private fun getOsVersion(num: Int) = when (num) {
     Build.VERSION_CODES.VANILLA_ICE_CREAM -> 150000

@@ -46,7 +46,7 @@ object Config {
     private const val CONFIG_PATH = "/data/adb/tricky_store"
     private const val TARGET_FILE = "target.txt"
     private const val KEYBOX_FILE = "keybox.xml"
-    private const val DEV_CONFIG_FILE = "devconfig.toml"
+    private const val PATCHLEVEL_FILE = "security_patch.txt"
     private val root = File(CONFIG_PATH)
 
     object ConfigObserver : FileObserver(root, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
@@ -60,7 +60,7 @@ object Config {
             when (path) {
                 TARGET_FILE -> updateTargetPackages(f)
                 KEYBOX_FILE -> updateKeyBox(f)
-                DEV_CONFIG_FILE -> parseDevConfig(f)
+                PATCHLEVEL_FILE -> updatePatchLevel(f)
             }
         }
     }
@@ -79,26 +79,9 @@ object Config {
         } else {
             updateKeyBox(keybox)
         }
-
-        val fDevConfig = File(root, DEV_CONFIG_FILE)
-        parseDevConfig(fDevConfig)
-
+        val patchFile = File(root, PATCHLEVEL_FILE)
+        updatePatchLevel(if (patchFile.exists()) patchFile else null)
         ConfigObserver.startWatching()
-    }
-
-    private fun resetProp() = CoroutineScope(Dispatchers.IO).async {
-        runCatching {
-            val p = Runtime.getRuntime().exec(
-                arrayOf(
-                    "su", "-c", "resetprop", "ro.build.version.security_patch", devConfig.securityPatch
-                )
-            )
-            if (p.waitFor() == 0) {
-                Logger.d("resetprop security_patch from ${Build.VERSION.SECURITY_PATCH} to ${devConfig.securityPatch}")
-            }
-        }.onFailure {
-            Logger.e("", it)
-        }
     }
 
     private var iPm: IPackageManager? = null
@@ -120,44 +103,40 @@ object Config {
         ps?.any { it in generatePackages || it in hackPackages }
     }.onFailure { Logger.e("failed to get packages", it) }.getOrNull() ?: false
 
-    private val toml = Toml(
-        inputConfig = TomlInputConfig(
-            ignoreUnknownNames = false,
-            allowEmptyValues = true,
-            allowNullValues = true,
-            allowEscapedQuotesInLiteralStrings = true,
-            allowEmptyToml = true,
-            ignoreDefaultValues = false,
-        ),
-        outputConfig = TomlOutputConfig(
-            indentation = TomlIndentation.FOUR_SPACES,
-        )
-    )
+    @Volatile
+    var _customPatchLevel: CustomPatchLevel? = null
 
-    var devConfig = DeviceConfig()
-        private set
-
-    @Serializable
-    data class DeviceConfig(
-        @TomlComments("YYYY-MM-DD") val securityPatch: String = Build.VERSION.SECURITY_PATCH,
-        @TomlComments("SDK Version (i.e.: 35 for Android 15)") val osVersion: Int = Build.VERSION.SDK_INT,
-    )
-
-    fun parseDevConfig(f: File?) = runCatching {
-        f ?: return@runCatching
-        // stop watching writing to prevent recursive calls
-        ConfigObserver.stopWatching()
-        if (!f.exists()) {
-            f.createNewFile()
-            f.writeText(Toml.encodeToString(devConfig))
-        } else {
-            devConfig = toml.decodeFromString(DeviceConfig.serializer(), f.readText())
-            // in case there're new updates for device config
-            f.writeText(Toml.encodeToString(devConfig))
+    fun updatePatchLevel(f: File?) = runCatching {
+        if (f == null || !f.exists()) {
+            _customPatchLevel = null
+            return@runCatching
         }
-        resetProp()
-        ConfigObserver.startWatching()
+        val lines = f.readLines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+        if (lines.isEmpty()) {
+            _customPatchLevel = null
+            return@runCatching
+        }
+        if (lines.size == 1 && !lines[0].contains("=")) {
+            _customPatchLevel = CustomPatchLevel(all = lines[0])
+            return@runCatching
+        }
+        val map = mutableMapOf<String, String>()
+        for (line in lines) {
+            val idx = line.indexOf('=')
+            if (idx > 0) {
+                val key = line.substring(0, idx).trim().lowercase()
+                val value = line.substring(idx + 1).trim()
+                map[key] = value
+            }
+        }
+        val all = map["all"]
+        _customPatchLevel = CustomPatchLevel(
+            system = map["system"] ?: all,
+            vendor = map["vendor"] ?: all,
+            boot = map["boot"] ?: all,
+            all = all
+        )
     }.onFailure {
-        Logger.e("", it)
+        Logger.e("failed to update patch level", it)
     }
 }
